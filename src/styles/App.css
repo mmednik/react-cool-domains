@@ -54,7 +54,6 @@ header{
 .right{
   display: flex;
   background: black;
-  border-radius: 16px;
   padding: 12px 20px;
   height: 99%;
   margin-right: 10%;
@@ -259,6 +258,16 @@ input:focus {
 
 .underlined:hover{
   cursor: pointer;
+}
+
+.currentAccount{
+  background: -webkit-linear-gradient(left, #33D573, #B7E90E);
+  animation: gradient-animation 4s ease infinite;
+  background-size: 200% 200%;
+}
+
+.currentAccount p {
+  color: #000000;
 }
 
 /* KeyFrames */

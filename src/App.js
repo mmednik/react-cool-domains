@@ -11,13 +11,15 @@ import { networks } from "./utils/networks";
 const TWITTER_HANDLE = "_buildspace";
 const TWITTER_LINK = `https://twitter.com/${TWITTER_HANDLE}`;
 const tld = ".insignia";
-const CONTRACT_ADDRESS = "0xFA4B308776f7fB4ee3219Ada77Ee1b4Ecd9F08bD";
+const CONTRACT_ADDRESS = "0x5fa7cC10bE8618C3159C492c10543Cca8C4a06CD";
 
 const App = () => {
   const [currentAccount, setCurrentAccount] = useState("");
   const [domain, setDomain] = useState("");
   const [ipfsUrl, setIpfsUrl] = useState("");
   const [network, setNetwork] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [mints, setMints] = useState([]);
 
   // Implement your connectWallet method here
   const connectWallet = async () => {
@@ -74,46 +76,48 @@ const App = () => {
     }
   };
 
-	const switchNetwork = async () => {
-		if (window.ethereum) {
-			try {
-				// Try to switch to the Mumbai testnet
-				await window.ethereum.request({
-					method: 'wallet_switchEthereumChain',
-					params: [{ chainId: '0x13881' }], // Check networks.js for hexadecimal network ids
-				});
-			} catch (error) {
-				// This error code means that the chain we want has not been added to MetaMask
-				// In this case we ask the user to add it to their MetaMask
-				if (error.code === 4902) {
-					try {
-						await window.ethereum.request({
-							method: 'wallet_addEthereumChain',
-							params: [
-								{	
-									chainId: '0x13881',
-									chainName: 'Polygon Mumbai Testnet',
-									rpcUrls: ['https://rpc-mumbai.maticvigil.com/'],
-									nativeCurrency: {
-											name: "Mumbai Matic",
-											symbol: "MATIC",
-											decimals: 18
-									},
-									blockExplorerUrls: ["https://mumbai.polygonscan.com/"]
-								},
-							],
-						});
-					} catch (error) {
-						console.log(error);
-					}
-				}
-				console.log(error);
-			}
-		} else {
-			// If window.ethereum is not found then MetaMask is not installed
-			alert('MetaMask is not installed. Please install it to use this app: https://metamask.io/download.html');
-		} 
-	}
+  const switchNetwork = async () => {
+    if (window.ethereum) {
+      try {
+        // Try to switch to the Mumbai testnet
+        await window.ethereum.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: "0x13881" }], // Check networks.js for hexadecimal network ids
+        });
+      } catch (error) {
+        // This error code means that the chain we want has not been added to MetaMask
+        // In this case we ask the user to add it to their MetaMask
+        if (error.code === 4902) {
+          try {
+            await window.ethereum.request({
+              method: "wallet_addEthereumChain",
+              params: [
+                {
+                  chainId: "0x13881",
+                  chainName: "Polygon Mumbai Testnet",
+                  rpcUrls: ["https://rpc-mumbai.maticvigil.com/"],
+                  nativeCurrency: {
+                    name: "Mumbai Matic",
+                    symbol: "MATIC",
+                    decimals: 18,
+                  },
+                  blockExplorerUrls: ["https://mumbai.polygonscan.com/"],
+                },
+              ],
+            });
+          } catch (error) {
+            console.log(error);
+          }
+        }
+        console.log(error);
+      }
+    } else {
+      // If window.ethereum is not found then MetaMask is not installed
+      alert(
+        "MetaMask is not installed. Please install it to use this app: https://metamask.io/download.html"
+      );
+    }
+  };
 
   const mintDomain = async () => {
     // Don't run if the domain is empty
@@ -159,6 +163,10 @@ const App = () => {
             "IPFS url set! https://mumbai.polygonscan.com/tx/" + tx.hash
           );
 
+          setTimeout(() => {
+            fetchMints();
+          }, 2000);
+
           setIpfsUrl("");
           setDomain("");
         } else {
@@ -168,6 +176,74 @@ const App = () => {
     } catch (error) {
       console.log(error);
     }
+  };
+
+  const fetchMints = async () => {
+    try {
+      const { ethereum } = window;
+      if (ethereum) {
+        const provider = new ethers.providers.Web3Provider(ethereum);
+        const signer = provider.getSigner();
+        const contract = new ethers.Contract(
+          CONTRACT_ADDRESS,
+          contractAbi.abi,
+          signer
+        );
+
+        const names = await contract.getAllNames();
+
+        const mintIpfsUrls = await Promise.all(
+          names.map(async (name) => {
+            const mintIpfsUrl = await contract.ipfsUrls(name);
+            const owner = await contract.domains(name);
+            return {
+              id: names.indexOf(name),
+              name: name,
+              record: mintIpfsUrl,
+              owner: owner,
+            };
+          })
+        );
+
+        console.log("MINTS FETCHED ", mintIpfsUrls);
+        setMints(mintIpfsUrls);
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  const updateDomain = async () => {
+    if (!ipfsUrl || !domain) {
+      return;
+    }
+    //setLoading(true);
+    console.log("Updating domain", domain, "with IPFS url", ipfsUrl);
+    try {
+      const { ethereum } = window;
+      if (ethereum) {
+        const provider = new ethers.providers.Web3Provider(ethereum);
+        const signer = provider.getSigner();
+        const contract = new ethers.Contract(
+          CONTRACT_ADDRESS,
+          contractAbi.abi,
+          signer
+        );
+
+        let tx = await contract.setIpfsUrl(domain, ipfsUrl);
+        await tx.wait();
+        console.log(
+          "IPFS url set https://mumbai.polygonscan.com/tx/" + tx.hash
+        );
+
+        fetchMints();
+        setIpfsUrl("");
+        setDomain("");
+      }
+    } catch (error) {
+      console.log(error);
+    }
+    //setLoading(false);
   };
 
   // Render Methods
@@ -187,48 +263,113 @@ const App = () => {
   );
 
   const renderInputForm = () => {
-    if (network !== 'Polygon Mumbai Testnet') {
-			return (
-				<div className="connect-wallet-container">
-					<h2>Please switch to Polygon Mumbai Testnet</h2>
-					{/* This button will call our switch network function */}
-					<button className='cta-button mint-button' onClick={switchNetwork}>Click here to switch</button>
-				</div>
-			);
-		}
-		
-		return (
-			<div className="form-container">
-				<div className="first-row">
-					<input
-						type="text"
-						value={domain}
-						placeholder="domain"
-						onChange={(e) => setDomain(e.target.value)}
-					/>
-					<p className="tld"> {tld} </p>
-				</div>
+    if (network !== "Polygon Mumbai Testnet") {
+      return (
+        <div className="connect-wallet-container">
+          <h2>Please switch to Polygon Mumbai Testnet</h2>
+          {/* This button will call our switch network function */}
+          <button className="cta-button mint-button" onClick={switchNetwork}>
+            Click here to switch
+          </button>
+        </div>
+      );
+    }
 
-				<input
-					type="text"
-					value={ipfsUrl}
-					placeholder="IPFS url"
-					onChange={(e) => setIpfsUrl(e.target.value)}
-				/>
+    return (
+      <div className="form-container">
+        <div className="first-row">
+          <input
+            type="text"
+            value={domain}
+            placeholder="domain"
+            onChange={(e) => setDomain(e.target.value)}
+          />
+          <p className="tld"> {tld} </p>
+        </div>
 
-				<div className="button-container">
-					<button className="cta-button mint-button" onClick={mintDomain}>
-						Mint
-					</button>
-				</div>
-			</div>
-		);
-	
+        <input
+          type="text"
+          value={ipfsUrl}
+          placeholder="IPFS url"
+          onChange={(e) => setIpfsUrl(e.target.value)}
+        />
+        {editing ? (
+          <div className="button-container">
+            <button
+              className="cta-button mint-button"
+              onClick={updateDomain}
+            >
+              Set IPFS url
+            </button>
+            false
+            <button
+              className="cta-button mint-button"
+              onClick={() => {
+                setEditing(false);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          // If editing is not true, the mint button will be returned instead
+          <button
+            className="cta-button mint-button"
+            onClick={mintDomain}
+          >
+            Mint
+          </button>
+        )}
+      </div>
+    );
   };
 
+
+  const renderMints = () => {
+    if (currentAccount && mints.length > 0) {
+      return (
+        <div className="mint-container">
+          <p className="subtitle"> Recently minted domains!</p>
+          <div className="mint-list">
+            { mints.map((mint, index) => {
+              return (
+                <div className="mint-item" key={index}>
+                  <div className='mint-row'>
+                    <a className="link" href={`https://testnets.opensea.io/assets/mumbai/${CONTRACT_ADDRESS}/${mint.id}`} target="_blank" rel="noopener noreferrer">
+                      <p className="underlined">{' '}{mint.name}{tld}{' '}</p>
+                    </a>
+                    { mint.owner.toLowerCase() === currentAccount.toLowerCase() ?
+                      <button className="edit-button" onClick={() => editIpfsUrl(mint.name)}>
+                        <img className="edit-icon" src="https://img.icons8.com/metro/26/000000/pencil.png" alt="Edit button" />
+                      </button>
+                      :
+                      null
+                    }
+                  </div>
+            <p> {mint.record} </p>
+          </div>)
+          })}
+        </div>
+      </div>);
+    }
+  };
+  
+  // This will take us into edit mode and show us the edit buttons!
+  const editIpfsUrl = (name) => {
+    console.log("Editing IPFS url for", name);
+    setEditing(true);
+    setDomain(name);
+  }
+  
   useEffect(() => {
     checkIfWalletIsConnected();
   }, []);
+
+  useEffect(() => {
+    if (network === 'Polygon Mumbai Testnet') {
+      fetchMints();
+    }
+  }, [currentAccount, network]);
 
   return (
     <div className="App">
@@ -239,7 +380,7 @@ const App = () => {
               <p className="title">📛 Insignia Name Service</p>
               <p className="subtitle">Your immortal API on the blockchain!</p>
             </div>
-            <div className="right">
+            <div className="right currentAccount">
               <img
                 alt="Network logo"
                 className="logo"
@@ -261,6 +402,7 @@ const App = () => {
         {/* Hide the connect button if currentAccount isn't empty*/}
         {!currentAccount && renderNotConnectedContainer()}
         {currentAccount && renderInputForm()}
+        {mints && renderMints()}
 
         <div className="footer-container">
           <img alt="Twitter Logo" className="twitter-logo" src={twitterLogo} />
